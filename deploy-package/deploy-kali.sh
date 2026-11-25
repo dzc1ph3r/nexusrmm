@@ -94,7 +94,7 @@ log_info "[1/10] Installing system dependencies..."
 $PKG_UPDATE
 $PKG_INSTALL curl wget git build-essential pkg-config libssl-dev \
     postgresql postgresql-contrib redis-server \
-    ca-certificates gnupg lsb-release 2>/dev/null || true
+    ca-certificates gnupg lsb-release protobuf-compiler 2>/dev/null || true
 
 # Kali/WSL specific packages
 $PKG_INSTALL libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
