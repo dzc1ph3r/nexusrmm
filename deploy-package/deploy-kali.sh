@@ -234,14 +234,12 @@ CGO_ENABLED=0 go build -ldflags="-s -w" -o "$INSTALL_PATH/bin/nexus-relay" ./cmd
 chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_PATH/bin/nexus-relay"
 log_success "Relay server built to $INSTALL_PATH/bin/nexus-relay"
 
-# Step 8: Build Agent (Rust)
+# Step 8: Build Agent (Rust) - build as root (Rust installed for root)
 log_info "[8/10] Building Linux Agent..."
 cd "$AGENT_DIR"
-sudo -u "$SERVICE_USER" bash -c "
-    source \$HOME/.cargo/env
-    export PATH=\$HOME/.cargo/bin:\$PATH
-    cargo build --release --target x86_64-unknown-linux-gnu
-"
+source "$HOME/.cargo/env"
+export PATH="$HOME/.cargo/bin:$PATH"
+cargo build --release --target x86_64-unknown-linux-gnu
 mkdir -p "$INSTALL_PATH/agent/dist"
 cp "target/x86_64-unknown-linux-gnu/release/nexus-agent" "$INSTALL_PATH/agent/dist/nexus-agent"
 chown "$SERVICE_USER:$SERVICE_USER" "$INSTALL_PATH/agent/dist/nexus-agent"
