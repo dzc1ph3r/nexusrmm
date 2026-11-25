@@ -190,7 +190,7 @@ find_source_dir() {
             echo "$base/$name"
             return
         fi
-    fi
+    done
     echo ""
 }
 
