@@ -1,0 +1,10 @@
+/home/dzc1ph3r/Tools/nexusrmm/agent/target/debug/build/stacker/8ec579856052a5b7/out/stacker-8ec579856052a5b7.d: /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/lib.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/backends/mod.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/backends/unix.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/mmap_stack_restore_guard.rs
+
+/home/dzc1ph3r/Tools/nexusrmm/agent/target/debug/build/stacker/8ec579856052a5b7/out/libstacker-8ec579856052a5b7.rlib: /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/lib.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/backends/mod.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/backends/unix.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/mmap_stack_restore_guard.rs
+
+/home/dzc1ph3r/Tools/nexusrmm/agent/target/debug/build/stacker/8ec579856052a5b7/out/libstacker-8ec579856052a5b7.rmeta: /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/lib.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/backends/mod.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/backends/unix.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/mmap_stack_restore_guard.rs
+
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/lib.rs:
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/backends/mod.rs:
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/backends/unix.rs:
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/stacker-0.1.25/src/mmap_stack_restore_guard.rs:

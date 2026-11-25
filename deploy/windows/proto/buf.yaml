@@ -1,0 +1,18 @@
+version: v1
+name: buf.build/nexusrmm/rmm
+deps:
+  - buf.build/bufbuild/protovalidate
+  - buf.build/connectrpc/validate
+lint:
+  use:
+    - DEFAULT
+    - PROTOVALIDATE
+  except:
+    - PACKAGE_VERSION_SUFFIX
+    - FIELD_NOT_REQUIRED
+breaking:
+  use:
+    - FILE
+  except:
+    - EXTENSION_JSON_NAME
+    - RPC_NO_DELETE

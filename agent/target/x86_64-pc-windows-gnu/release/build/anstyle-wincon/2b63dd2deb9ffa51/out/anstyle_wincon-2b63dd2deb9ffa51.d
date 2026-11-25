@@ -1,0 +1,10 @@
+/home/dzc1ph3r/Tools/nexusrmm/agent/target/x86_64-pc-windows-gnu/release/build/anstyle-wincon/2b63dd2deb9ffa51/out/anstyle_wincon-2b63dd2deb9ffa51.d: /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/lib.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/ansi.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/stream.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/windows.rs
+
+/home/dzc1ph3r/Tools/nexusrmm/agent/target/x86_64-pc-windows-gnu/release/build/anstyle-wincon/2b63dd2deb9ffa51/out/libanstyle_wincon-2b63dd2deb9ffa51.rlib: /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/lib.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/ansi.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/stream.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/windows.rs
+
+/home/dzc1ph3r/Tools/nexusrmm/agent/target/x86_64-pc-windows-gnu/release/build/anstyle-wincon/2b63dd2deb9ffa51/out/libanstyle_wincon-2b63dd2deb9ffa51.rmeta: /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/lib.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/ansi.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/stream.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/windows.rs
+
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/lib.rs:
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/ansi.rs:
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/stream.rs:
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/anstyle-wincon-3.0.11/src/windows.rs:

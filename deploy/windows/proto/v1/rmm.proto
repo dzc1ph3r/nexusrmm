@@ -1,0 +1,697 @@
+syntax = "proto3";
+
+package rmm.v1;
+
+option go_package = "github.com/nexusrmm/nexusrmm/proto/gen/go/rmm/v1";
+
+// =============================================================================
+// Nexus RMM Wire Protocol Specification
+// =============================================================================
+// Binary framing over WebSocket (or WebRTC data channels):
+// [Magic: 0x52 0x4D 0x4D] [Version: u8] [Flags: u8] [MsgType: u16] [SessionID: u64] [SeqNum: u32] [PayloadLen: u32] [Payload...] [CRC32: u32]
+//
+// Magic bytes: "RMM" (0x52, 0x4D, 0x4D)
+// Version: Protocol version (1)
+// Flags: Bitfield (0x01 = compressed, 0x02 = encrypted, 0x04 = fragmented)
+// MsgType: Message type identifier (see FrameType enum)
+// SessionID: Logical session identifier (0 for control plane)
+// SeqNum: Monotonic sequence number per session
+// PayloadLen: Length of payload in bytes (max 16MB)
+// Payload: Protobuf-encoded message
+// CRC32: CRC32C checksum of everything before checksum
+// =============================================================================
+
+// Frame types for the wire protocol
+enum FrameType {
+  FRAME_TYPE_UNSPECIFIED = 0;   // Default zero value
+  // Control plane (SessionID = 0)
+  FRAME_TYPE_HELLO           = 1;   // Client -> Server: Initial connection with agent info
+  FRAME_TYPE_WELCOME         = 2;   // Server -> Client: Connection accepted, assigned session ID
+  FRAME_TYPE_ENROLL_REQUEST  = 3;   // Agent -> Server: Enrollment request with Ed25519 pubkey
+  FRAME_TYPE_ENROLL_CHALLENGE = 4;  // Server -> Agent: Challenge for proof of possession
+  FRAME_TYPE_ENROLL_RESPONSE = 5;   // Agent -> Server: Signed challenge response
+  FRAME_TYPE_ENROLL_RESULT   = 6;   // Server -> Agent: Enrollment result (agent ID, cert)
+  FRAME_TYPE_HEARTBEAT       = 7;   // Bidirectional: Keepalive with telemetry
+  FRAME_TYPE_HEARTBEAT_ACK   = 8;   // Bidirectional: Heartbeat acknowledgment
+  FRAME_TYPE_REKEY           = 9;   // Bidirectional: Key rotation request
+  FRAME_TYPE_REKEY_ACK       = 10;  // Bidirectional: Key rotation acknowledgment
+  FRAME_TYPE_DISCONNECT      = 11;  // Bidirectional: Graceful disconnect with reason
+  FRAME_TYPE_ERROR           = 12;  // Bidirectional: Protocol error
+
+  // Session management
+  FRAME_TYPE_SESSION_CREATE  = 20;  // Console -> Server: Create new session
+  FRAME_TYPE_SESSION_JOIN    = 21;  // Console -> Server: Join existing session
+  FRAME_TYPE_SESSION_OFFER   = 22;  // Server -> Agent: WebRTC offer for session
+  FRAME_TYPE_SESSION_ANSWER  = 23;  // Agent -> Server: WebRTC answer
+  FRAME_TYPE_SESSION_ICE     = 24;  // Bidirectional: ICE candidates
+  FRAME_TYPE_SESSION_START   = 25;  // Server -> Agent/Console: Session started
+  FRAME_TYPE_SESSION_END     = 26;  // Bidirectional: Session ended
+  FRAME_TYPE_SESSION_CONTROL = 27;  // Console -> Agent: Input/control events
+
+  // Remote desktop (high bandwidth, separate data channel preferred)
+  FRAME_TYPE_VIDEO_FRAME     = 40;  // Agent -> Console: Encoded video frame (H.264/VP8/WebP)
+  FRAME_TYPE_VIDEO_KEYFRAME  = 41;  // Agent -> Console: Keyframe (full frame)
+  FRAME_TYPE_VIDEO_CONFIG    = 42;  // Agent -> Console: Video codec config
+  FRAME_TYPE_CURSOR_UPDATE   = 43;  // Agent -> Console: Cursor position/shape
+  FRAME_TYPE_DISPLAY_INFO    = 44;  // Agent -> Console: Monitor layout changes
+
+  // Backstage / interactive shell
+  FRAME_TYPE_PTY_DATA        = 60;  // Bidirectional: PTY stdin/stdout/stderr
+  FRAME_TYPE_PTY_RESIZE      = 61;  // Console -> Agent: Terminal resize
+  FRAME_TYPE_PTY_CLOSE       = 62;  // Bidirectional: PTY session close
+
+  // File transfer
+  FRAME_TYPE_FILE_LIST       = 80;  // Console -> Agent: List directory
+  FRAME_TYPE_FILE_LIST_RESP  = 81;  // Agent -> Console: Directory listing
+  FRAME_TYPE_FILE_READ       = 82;  // Console -> Agent: Read file chunk
+  FRAME_TYPE_FILE_READ_RESP  = 83;  // Agent -> Console: File chunk data
+  FRAME_TYPE_FILE_WRITE      = 84;  // Console -> Agent: Write file chunk
+  FRAME_TYPE_FILE_WRITE_ACK  = 85;  // Agent -> Console: Write acknowledged
+  FRAME_TYPE_FILE_TRANSFER   = 86;  // Bidirectional: Large file transfer (chunked)
+  FRAME_TYPE_FILE_HASH       = 87;  // Bidirectional: SHA-256 verification
+
+  // Process/Service management
+  FRAME_TYPE_PROC_LIST       = 100; // Console -> Agent: List processes
+  FRAME_TYPE_PROC_LIST_RESP  = 101; // Agent -> Console: Process list
+  FRAME_TYPE_PROC_KILL       = 102; // Console -> Agent: Kill process
+  FRAME_TYPE_SERVICE_LIST    = 103; // Console -> Agent: List services
+  FRAME_TYPE_SERVICE_LIST_RESP = 104; // Agent -> Console: Service list
+  FRAME_TYPE_SERVICE_CONTROL = 105; // Console -> Agent: Start/stop/restart service
+
+  // Script execution
+  FRAME_TYPE_SCRIPT_EXEC     = 120; // Console -> Agent: Execute script
+  FRAME_TYPE_SCRIPT_OUTPUT   = 121; // Agent -> Console: Script stdout/stderr
+  FRAME_TYPE_SCRIPT_RESULT   = 122; // Agent -> Console: Script exit code
+
+  // System telemetry
+  FRAME_TYPE_TELEMETRY       = 140; // Agent -> Server: System metrics
+  FRAME_TYPE_INVENTORY       = 141; // Agent -> Server: Hardware/software inventory
+}
+
+// Agent enrollment request
+message EnrollRequest {
+  string agent_version = 1;
+  string os = 2;                    // "windows", "linux", "darwin"
+  string arch = 3;                  // "amd64", "arm64", "386"
+  string hostname = 4;
+  string machine_id = 5;            // /etc/machine-id or Windows MachineGuid
+  bytes ed25519_pubkey = 6;         // 32-byte Ed25519 public key
+  bytes csr_der = 7;                // Optional: CSR for mTLS cert (DER encoded)
+  map<string, string> tags = 8;     // Agent tags (group, location, etc.)
+  string enrollment_token = 9;      // One-time enrollment token from admin
+}
+
+// Server enrollment challenge
+message EnrollChallenge {
+  bytes challenge = 1;              // 32-byte random challenge
+  string server_nonce = 2;          // Server nonce for replay protection
+  int64 expires_at = 3;             // Unix timestamp when challenge expires
+}
+
+// Agent enrollment response (signed challenge)
+message EnrollResponse {
+  bytes challenge = 1;              // Echo the challenge
+  bytes signature = 2;              // Ed25519 signature of challenge + server_nonce
+  string agent_nonce = 3;           // Agent nonce
+}
+
+// Server enrollment result
+message EnrollResult {
+  bool success = 1;
+  string agent_id = 2;              // Assigned agent ID (if success)
+  bytes cert_der = 3;               // mTLS certificate (DER) for agent
+  bytes ca_cert_der = 4;            // CA certificate for pinning
+  int64 cert_expires_at = 5;        // Certificate expiration
+  string error = 6;                 // Error message if failed
+  map<string, string> config = 7;   // Agent configuration
+}
+
+// Hello frame (initial connection)
+message Hello {
+  string agent_id = 1;              // Agent ID (empty if not enrolled)
+  string agent_version = 2;
+  string os = 3;
+  string arch = 4;
+  string hostname = 5;
+  string machine_id = 6;
+  bytes ed25519_pubkey = 7;         // Agent's long-term Ed25519 public key
+  bytes session_pubkey = 8;         // Ephemeral X25519 public key for session encryption
+  bytes signature = 9;              // Signature of hello payload with Ed25519 key
+  int64 timestamp = 10;             // Unix timestamp
+}
+
+// Welcome frame (server response)
+message Welcome {
+  bool success = 1;
+  uint64 session_id = 2;            // Assigned session ID for this connection
+  bytes server_session_pubkey = 3;  // Server's ephemeral X25519 public key
+  bytes signature = 4;              // Signature with server's long-term key
+  int64 server_time = 5;            // Server time for clock sync
+  string error = 6;
+  map<string, string> config = 7;   // Server configuration for agent
+}
+
+// Heartbeat payload
+message Heartbeat {
+  int64 timestamp = 1;              // Sender timestamp
+  Telemetry telemetry = 2;          // Optional telemetry snapshot
+  uint32 sequence = 3;              // Heartbeat sequence number
+}
+
+// Heartbeat acknowledgment
+message HeartbeatAck {
+  int64 server_time = 1;            // Server receive time
+  uint32 sequence = 2;              // Echoed sequence
+}
+
+// Disconnect frame
+message Disconnect {
+  enum Reason {
+    REASON_UNSPECIFIED = 0;
+    REASON_NORMAL = 1;
+    REASON_AUTH_FAILED = 2;
+    REASON_PROTOCOL_ERROR = 3;
+    REASON_VERSION_MISMATCH = 4;
+    REASON_SERVER_SHUTDOWN = 5;
+    REASON_AGENT_UPDATE = 6;
+    REASON_REKEY_FAILED = 7;
+  }
+  Reason reason = 1;
+  string message = 2;
+}
+
+// Error frame
+message Error {
+  enum Code {
+    ERR_UNSPECIFIED = 0;
+    ERR_INVALID_FRAME = 1;
+    ERR_UNKNOWN_MSG_TYPE = 2;
+    ERR_SEQUENCE_MISMATCH = 3;
+    ERR_DECRYPTION_FAILED = 4;
+    ERR_AUTHENTICATION_FAILED = 5;
+    ERR_SESSION_NOT_FOUND = 6;
+    ERR_RATE_LIMITED = 7;
+    ERR_INTERNAL = 8;
+  }
+  Code code = 1;
+  string message = 2;
+  uint32 original_seq = 3;
+}
+
+// Rekey request
+message RekeyRequest {
+  bytes new_session_pubkey = 1;     // New ephemeral X25519 public key
+  bytes signature = 2;              // Signed with long-term Ed25519 key
+}
+
+// Rekey acknowledgment
+message RekeyAck {
+  bytes new_server_session_pubkey = 1;
+  bytes signature = 2;
+}
+
+// Session creation request (from console)
+message SessionCreateRequest {
+  string agent_id = 1;
+  SessionType type = 2;
+  map<string, string> options = 3;  // e.g., "video_quality", "audio"
+}
+
+// Session types
+enum SessionType {
+  SESSION_TYPE_DESKTOP = 0;
+  SESSION_TYPE_TERMINAL = 1;
+  SESSION_TYPE_FILE_MANAGER = 2;
+  SESSION_TYPE_BACKSTAGE = 3;       // Hidden from user
+}
+
+// Session join request
+message SessionJoinRequest {
+  string session_id = 1;
+  string token = 2;                 // Session access token
+}
+
+// Session offer (WebRTC)
+message SessionOffer {
+  string session_id = 1;
+  string sdp = 2;                   // WebRTC offer SDP
+}
+
+// Session answer (WebRTC)
+message SessionAnswer {
+  string session_id = 1;
+  string sdp = 2;                   // WebRTC answer SDP
+}
+
+// ICE candidate
+message SessionIce {
+  string session_id = 1;
+  string candidate = 2;
+  string sdp_mid = 3;
+  int32 sdp_mline_index = 4;
+}
+
+// Session start notification
+message SessionStart {
+  string session_id = 1;
+  SessionType type = 2;
+  string agent_id = 3;
+}
+
+// Session end
+message SessionEnd {
+  string session_id = 1;
+  string reason = 2;
+}
+
+// Session control (input events)
+message SessionControl {
+  string session_id = 1;
+  ControlEvent event = 2;
+}
+
+// Input control events
+message ControlEvent {
+  enum Type {
+    TYPE_MOUSE_MOVE = 0;
+    TYPE_MOUSE_DOWN = 1;
+    TYPE_MOUSE_UP = 2;
+    TYPE_MOUSE_WHEEL = 3;
+    TYPE_KEY_DOWN = 4;
+    TYPE_KEY_UP = 5;
+    TYPE_TOUCH = 6;
+    TYPE_CLIPBOARD = 7;
+    TYPE_DISPLAY_SWITCH = 8;
+  }
+  Type type = 1;
+  int32 x = 2;
+  int32 y = 3;
+  uint32 button = 4;                // Mouse button / key code
+  uint32 modifiers = 5;             // Shift, Ctrl, Alt, Meta
+  int32 delta_x = 6;                // Wheel delta
+  int32 delta_y = 7;
+  string text = 8;                  // For clipboard / text input
+  int32 display_index = 9;          // Multi-monitor
+}
+
+// Video frame
+message VideoFrame {
+  string session_id = 1;
+  uint32 frame_id = 2;
+  bool is_keyframe = 3;
+  int32 width = 4;
+  int32 height = 5;
+  VideoCodec codec = 6;
+  bytes data = 7;                   // Encoded frame data
+  // Dirty rectangles (optional, for delta frames)
+  repeated Rect dirty_rects = 8;
+  int64 timestamp_us = 9;           // Capture timestamp (microseconds)
+}
+
+message Rect {
+  int32 x = 1;
+  int32 y = 2;
+  int32 width = 3;
+  int32 height = 4;
+}
+
+enum VideoCodec {
+  VIDEO_CODEC_H264 = 0;
+  VIDEO_CODEC_VP8 = 1;
+  VIDEO_CODEC_VP9 = 2;
+  VIDEO_CODEC_WEBP = 3;
+  VIDEO_CODEC_AV1 = 4;
+}
+
+// Video config
+message VideoConfig {
+  string session_id = 1;
+  VideoCodec codec = 2;
+  int32 width = 3;
+  int32 height = 4;
+  int32 framerate = 5;
+  int32 bitrate_kbps = 6;
+  bytes codec_data = 7;             // SPS/PPS for H.264, etc.
+}
+
+// Cursor update
+message CursorUpdate {
+  string session_id = 1;
+  int32 x = 2;
+  int32 y = 3;
+  bool visible = 4;
+  bytes cursor_image = 5;           // Optional custom cursor (PNG)
+  int32 hotspot_x = 6;
+  int32 hotspot_y = 7;
+}
+
+// Display info
+message DisplayInfo {
+  string session_id = 1;
+  repeated Display displays = 2;
+}
+
+message Display {
+  int32 index = 1;
+  int32 x = 2;
+  int32 y = 3;
+  int32 width = 4;
+  int32 height = 5;
+  float scale = 6;
+  bool primary = 7;
+  string name = 8;
+}
+
+// PTY data
+message PtyData {
+  string session_id = 1;
+  PtyStream stream = 2;
+  bytes data = 3;
+}
+
+enum PtyStream {
+  PTY_STREAM_STDIN = 0;
+  PTY_STREAM_STDOUT = 1;
+  PTY_STREAM_STDERR = 2;
+}
+
+// PTY resize
+message PtyResize {
+  string session_id = 1;
+  uint32 cols = 2;
+  uint32 rows = 3;
+  uint32 width_px = 4;
+  uint32 height_px = 5;
+}
+
+// File operations
+message FileListRequest {
+  string session_id = 1;
+  string path = 2;
+  bool recursive = 3;
+}
+
+message FileEntry {
+  string name = 1;
+  string path = 2;
+  bool is_dir = 3;
+  int64 size = 4;
+  int64 modified_at = 5;
+  int64 created_at = 6;
+  string mode = 7;                  // Permissions (octal string)
+  string owner = 8;
+  string group = 9;
+}
+
+message FileListResponse {
+  string session_id = 1;
+  repeated FileEntry entries = 2;
+  string error = 3;
+}
+
+message FileReadRequest {
+  string session_id = 1;
+  string path = 2;
+  int64 offset = 3;
+  int32 length = 4;
+}
+
+message FileReadResponse {
+  string session_id = 1;
+  bytes data = 2;
+  bool eof = 3;
+  string error = 4;
+}
+
+message FileWriteRequest {
+  string session_id = 1;
+  string path = 2;
+  int64 offset = 3;
+  bytes data = 4;
+  bool append = 5;
+  bool create = 6;
+  string mode = 7;                  // Permissions for new files
+}
+
+message FileWriteResponse {
+  string session_id = 1;
+  int32 written = 2;
+  string error = 3;
+}
+
+message FileHashRequest {
+  string session_id = 1;
+  string path = 2;
+  HashAlgorithm algorithm = 3;
+}
+
+message FileHashResponse {
+  string session_id = 1;
+  bytes hash = 2;
+  string error = 3;
+}
+
+enum HashAlgorithm {
+  HASH_SHA256 = 0;
+  HASH_SHA512 = 1;
+  HASH_BLAKE3 = 2;
+}
+
+// Process management
+message ProcListRequest {
+  string session_id = 1;
+  bool include_threads = 2;
+}
+
+message ProcessInfo {
+  int32 pid = 1;
+  int32 ppid = 2;
+  string name = 3;
+  string exe = 4;
+  string cmdline = 5;
+  string username = 6;
+  float cpu_percent = 7;
+  int64 memory_rss = 8;
+  int64 memory_vms = 9;
+  string status = 10;               // "running", "sleeping", "zombie", etc.
+  int64 started_at = 11;
+  repeated ThreadInfo threads = 12;
+}
+
+message ThreadInfo {
+  int32 tid = 1;
+  float cpu_percent = 2;
+  string status = 3;
+}
+
+message ProcListResponse {
+  string session_id = 1;
+  repeated ProcessInfo processes = 2;
+  string error = 3;
+}
+
+message ProcKillRequest {
+  string session_id = 1;
+  int32 pid = 2;
+  int32 signal = 3;                 // SIGTERM=15, SIGKILL=9, etc.
+}
+
+message ProcKillResponse {
+  string session_id = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+// Service management
+message ServiceListRequest {
+  string session_id = 1;
+}
+
+message ServiceInfo {
+  string name = 1;
+  string display_name = 2;
+  string description = 3;
+  ServiceStatus status = 4;
+  ServiceStartType start_type = 5;
+  string binary_path = 6;
+  string username = 7;
+}
+
+enum ServiceStatus {
+  SERVICE_STOPPED = 0;
+  SERVICE_START_PENDING = 1;
+  SERVICE_STOP_PENDING = 2;
+  SERVICE_RUNNING = 3;
+  SERVICE_CONTINUE_PENDING = 4;
+  SERVICE_PAUSE_PENDING = 5;
+  SERVICE_PAUSED = 6;
+}
+
+enum ServiceStartType {
+  SERVICE_BOOT_START = 0;
+  SERVICE_SYSTEM_START = 1;
+  SERVICE_AUTO_START = 2;
+  SERVICE_DEMAND_START = 3;
+  SERVICE_DISABLED = 4;
+}
+
+message ServiceListResponse {
+  string session_id = 1;
+  repeated ServiceInfo services = 2;
+  string error = 3;
+}
+
+message ServiceControlRequest {
+  string session_id = 1;
+  string name = 2;
+  ServiceAction action = 3;
+}
+
+enum ServiceAction {
+  SERVICE_START = 0;
+  SERVICE_STOP = 1;
+  SERVICE_RESTART = 2;
+  SERVICE_PAUSE = 3;
+  SERVICE_CONTINUE = 4;
+}
+
+message ServiceControlResponse {
+  string session_id = 1;
+  bool success = 2;
+  ServiceStatus status = 3;
+  string error = 4;
+}
+
+// Script execution
+message ScriptExecRequest {
+  string session_id = 1;
+  ScriptLanguage language = 2;
+  string script = 3;
+  map<string, string> env = 4;
+  int32 timeout_seconds = 5;
+  bool elevated = 6;                // Run as admin/SYSTEM/root
+}
+
+enum ScriptLanguage {
+  SCRIPT_BASH = 0;
+  SCRIPT_POWERSHELL = 1;
+  SCRIPT_PYTHON = 2;
+  SCRIPT_CMD = 3;
+  SCRIPT_SH = 4;
+}
+
+message ScriptOutput {
+  string session_id = 1;
+  ScriptStream stream = 2;
+  bytes data = 3;
+}
+
+enum ScriptStream {
+  SCRIPT_STDOUT = 0;
+  SCRIPT_STDERR = 1;
+}
+
+message ScriptResult {
+  string session_id = 1;
+  int32 exit_code = 2;
+  string error = 3;
+}
+
+// Telemetry
+message Telemetry {
+  float cpu_percent = 1;
+  int64 memory_total = 2;
+  int64 memory_used = 3;
+  int64 memory_available = 4;
+  repeated DiskInfo disks = 5;
+  repeated NetworkInfo networks = 6;
+  float load_avg_1m = 7;
+  float load_avg_5m = 8;
+  float load_avg_15m = 9;
+  int64 uptime_seconds = 10;
+  int32 process_count = 11;
+  int32 thread_count = 12;
+  map<string, string> custom = 13;
+}
+
+message DiskInfo {
+  string device = 1;
+  string mount_point = 2;
+  string fstype = 3;
+  int64 total = 4;
+  int64 used = 5;
+  int64 free = 6;
+}
+
+message NetworkInfo {
+  string interface_name = 1;
+  string ipv4 = 2;
+  string ipv6 = 3;
+  int64 bytes_sent = 4;
+  int64 bytes_recv = 5;
+  int64 packets_sent = 6;
+  int64 packets_recv = 7;
+  bool is_up = 8;
+}
+
+// Inventory
+message Inventory {
+  string agent_id = 1;
+  HardwareInfo hardware = 2;
+  OSInfo os = 3;
+  repeated PackageInfo packages = 4;
+  repeated UserInfo users = 5;
+  int64 collected_at = 6;
+}
+
+message HardwareInfo {
+  string manufacturer = 1;
+  string model = 2;
+  string serial = 3;
+  string cpu_vendor = 4;
+  string cpu_model = 5;
+  int32 cpu_cores = 6;
+  int32 cpu_threads = 7;
+  int64 memory_total = 8;
+  repeated DiskInfo disks = 9;
+  repeated NetworkInfo networks = 10;
+  string gpu_info = 11;
+  bool virtualization = 12;
+  string chassis_type = 13;         // "desktop", "laptop", "server", "vm"
+}
+
+message OSInfo {
+  string name = 1;                  // "Windows", "Linux", "Darwin"
+  string version = 2;
+  string build = 3;
+  string arch = 4;
+  string kernel_version = 5;
+  bool is_container = 6;
+}
+
+message PackageInfo {
+  string name = 1;
+  string version = 2;
+  string source = 3;                // "apt", "winget", "brew", "msi", etc.
+  int64 install_date = 4;
+}
+
+message UserInfo {
+  string username = 1;
+  string full_name = 2;
+  string sid = 3;                   // Windows SID or UID
+  bool is_admin = 4;
+  bool is_active = 5;
+  int64 last_login = 6;
+}
+
+// Agent config from server
+message AgentConfig {
+  int32 heartbeat_interval_sec = 1;
+  int32 telemetry_interval_sec = 2;
+  int32 inventory_interval_sec = 3;
+  string log_level = 4;             // "debug", "info", "warn", "error"
+  bool auto_update = 5;
+  string update_url = 6;
+  map<string, string> custom = 7;
+}

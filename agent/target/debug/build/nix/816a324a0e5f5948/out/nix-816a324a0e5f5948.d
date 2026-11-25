@@ -1,0 +1,13 @@
+/home/dzc1ph3r/Tools/nexusrmm/agent/target/debug/build/nix/816a324a0e5f5948/out/nix-816a324a0e5f5948.d: /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/lib.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/macros.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/errno.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/fcntl.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/sys/mod.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/sys/signal.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/sys/sysinfo.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/sys/time.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/unistd.rs
+
+/home/dzc1ph3r/Tools/nexusrmm/agent/target/debug/build/nix/816a324a0e5f5948/out/libnix-816a324a0e5f5948.rmeta: /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/lib.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/macros.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/errno.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/fcntl.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/sys/mod.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/sys/signal.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/sys/sysinfo.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/sys/time.rs /home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/unistd.rs
+
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/lib.rs:
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/macros.rs:
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/errno.rs:
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/fcntl.rs:
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/sys/mod.rs:
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/sys/signal.rs:
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/sys/sysinfo.rs:
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/sys/time.rs:
+/home/dzc1ph3r/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/nix-0.28.0/src/unistd.rs:

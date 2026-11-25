@@ -1,0 +1,67 @@
+[package]
+name = "nexusrmm-agent"
+version = "0.1.0"
+edition = "2021"
+description = "Nexus RMM Cross-Platform Endpoint Agent"
+license = "MIT"
+
+[dependencies]
+# Async runtime
+tokio = { version = "1.38", features = ["full", "tls"] }
+tokio-tungstenite = { version = "0.21", features = ["rustls-tls", "native-tls"] }
+tungstenite = "0.21"
+
+# Cryptography
+ed25519-dalek = "2.1"
+x25519-dalek = "2.1"
+rand = { version = "0.8", features = ["std"] }
+ring = "0.17"
+sha2 = "0.10"
+zeroize = "1.7"
+crc32fast = "1.4"
+
+# Serialization
+prost = "0.12"
+prost-types = "0.12"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# System
+sysinfo = "0.30"
+syslog = "6.0"
+nix = { version = "0.28", features = ["default"], target_family = "unix" }
+windows = { version = "0.58", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_Security", "Win32_System_Registry"], target_family = "windows" }
+
+# Utilities
+anyhow = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
+clap = { version = "4.4", features = ["derive", "env"] }
+config = "0.14"
+dirs = "5.0"
+uuid = { version = "1.6", features = ["v4", "serde"] }
+hex = "0.4"
+hostname = "0.3"
+rustls = "0.23"
+rustls-pemfile = "1.0"
+rustls-native-certs = "0.7"
+async-trait = "0.1"
+base64 = "0.21"
+sha2 = "0.10"
+
+# Platform-specific
+#[cfg(target_os = "windows")]
+windows-service = "0.5"
+#[cfg(target_os = "linux")]
+systemd = "0.1"
+futures = "0.3"
+
+[build-dependencies]
+prost-build = "0.12"
+tonic-build = "0.10"
+
+[features]
+default = []
+windows_service = ["windows-service"]
+linux_service = ["systemd"]

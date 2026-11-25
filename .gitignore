@@ -1,0 +1,53 @@
+# Build artifacts
+/target/
+/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Deployment packages
+deploy-package-windows.zip
+deploy-package/
+
+# Certificates and keys
+*.crt
+*.key
+*.pem
+*.p12
+*.pfx
+certs/
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+.env.local
+config.yaml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+vendor/
+go.work
+
+# Node
+node_modules/
+web/dist/
+
+# Rust
+Cargo.lock
+
+# Temporary files
+*.tmp
+*.temp
