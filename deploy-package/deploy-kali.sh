@@ -166,28 +166,33 @@ log_info "DEBUG: CWD=$CWD"
 # Find source directories - try multiple locations
 find_source_dir() {
     local name=$1
-    # 1. Real script directory (resolved symlinks)
+    # 1. Standard installation path (HIGHEST PRIORITY - known good location)
+    if [[ -d "/opt/nexusrmm/deploy-package/$name" ]]; then
+        echo "/opt/nexusrmm/deploy-package/$name"
+        return
+    fi
+    # 2. Real script directory (resolved symlinks)
     if [[ -d "$SCRIPT_DIR/$name" ]]; then
         echo "$SCRIPT_DIR/$name"
         return
     fi
-    # 2. Current working directory
+    # 3. Current working directory
     if [[ -d "$CWD/$name" ]]; then
         echo "$CWD/$name"
         return
     fi
-    # 3. Parent of script dir
+    # 4. Parent of script dir
     if [[ -d "$SCRIPT_DIR/../$name" ]]; then
         echo "$SCRIPT_DIR/../$name"
         return
     fi
-    # 4. Parent of cwd
+    # 5. Parent of cwd
     if [[ -d "$CWD/../$name" ]]; then
         echo "$CWD/../$name"
         return
     fi
-    # 5. Common extraction paths
-    for base in "/opt/nexusrmm/deploy-package" "/opt/nexusrmm" "$HOME/nexusrmm/deploy-package" "$HOME/nexusrmm" "/tmp/nexusrmm/deploy-package"; do
+    # 6. Other common extraction paths
+    for base in "/opt/nexusrmm" "$HOME/nexusrmm/deploy-package" "$HOME/nexusrmm" "/tmp/nexusrmm/deploy-package"; do
         if [[ -d "$base/$name" ]]; then
             echo "$base/$name"
             return
