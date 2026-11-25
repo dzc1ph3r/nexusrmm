@@ -8,7 +8,11 @@
 
 # Deployment packages
 deploy-package-windows.zip
-deploy-package/
+deploy-package/*
+!deploy-package/deploy.ps1
+!deploy-package/build-agent.ps1
+!deploy-package/deploy-kali.sh
+!deploy-package/README_DEPLOY.md
 
 # Certificates and keys
 *.crt
