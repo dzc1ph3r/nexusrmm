@@ -152,22 +152,46 @@ log_info "[6/10] Creating directory structure..."
 mkdir -p "$INSTALL_PATH"/{bin,certs,config,logs,web,agent}
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_PATH"
 
-# Get script directory (absolute path)
+# Get script directory (absolute path) - with debugging
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# Also check current working directory
 CWD="$(pwd)"
 
-# Find source directories - try script dir first, then cwd
+# DEBUG: Show what we're detecting
+log_info "DEBUG: BASH_SOURCE[0]=${BASH_SOURCE[0]}"
+log_info "DEBUG: SCRIPT_DIR=$SCRIPT_DIR"
+log_info "DEBUG: CWD=$CWD"
+
+# Find source directories - try multiple locations
 find_source_dir() {
     local name=$1
+    # 1. Script directory (where the script file actually is)
     if [[ -d "$SCRIPT_DIR/$name" ]]; then
         echo "$SCRIPT_DIR/$name"
-    elif [[ -d "$CWD/$name" ]]; then
-        echo "$CWD/$name"
-    else
-        echo ""
+        return
     fi
+    # 2. Current working directory
+    if [[ -d "$CWD/$name" ]]; then
+        echo "$CWD/$name"
+        return
+    fi
+    # 3. Parent of script dir (if script is in deploy-package/deploy-kali.sh)
+    if [[ -d "$SCRIPT_DIR/../$name" ]]; then
+        echo "$SCRIPT_DIR/../$name"
+        return
+    fi
+    # 4. Parent of cwd
+    if [[ -d "$CWD/../$name" ]]; then
+        echo "$CWD/../$name"
+        return
+    fi
+    # 5. Common extraction paths
+    for base in "/opt/nexusrmm/deploy-package" "/opt/nexusrmm" "$HOME/nexusrmm/deploy-package" "$HOME/nexusrmm" "/tmp/nexusrmm/deploy-package"; do
+        if [[ -d "$base/$name" ]]; then
+            echo "$base/$name"
+            return
+        fi
+    fi
+    echo ""
 }
 
 SERVER_DIR=$(find_source_dir "server")
@@ -181,8 +205,9 @@ for dir_var in "SERVER_DIR:server" "AGENT_DIR:agent" "WEB_SOURCE_DIR:web-source"
     val="${!dir}"
     if [[ -z "$val" ]]; then
         log_error "Source directory not found: $name"
-        log_error "Checked: $SCRIPT_DIR/$name and $CWD/$name"
-        log_error "Run this script from the deploy-package directory after extracting the zip"
+        log_error "SCRIPT_DIR: $SCRIPT_DIR"
+        log_error "CWD: $CWD"
+        log_error "Run from deploy-package directory, or extract zip to /opt/nexusrmm"
         exit 1
     fi
 done
@@ -349,8 +374,8 @@ GRANT ALL PRIVILEGES ON DATABASE nexusrmm TO nexusrmm;
 EOF
 
 # Run migrations if they exist
-if [ -d "$(dirname "$0")/server/migrations" ]; then
-    cd "$(dirname "$0")/server"
+if [ -d "$SERVER_DIR/migrations" ]; then
+    cd "$SERVER_DIR"
     for migration in migrations/*.sql; do
         if [ -f "$migration" ]; then
             sudo -u postgres psql -d nexusrmm -f "$migration"
