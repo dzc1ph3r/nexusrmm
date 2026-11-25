@@ -152,19 +152,21 @@ log_info "[6/10] Creating directory structure..."
 mkdir -p "$INSTALL_PATH"/{bin,certs,config,logs,web,agent}
 chown -R "$SERVICE_USER:$SERVICE_USER" "$INSTALL_PATH"
 
-# Get script directory (absolute path) - with debugging
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Get script directory (absolute path) - resolve symlinks and sudo issues
+REAL_SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || realpath "${BASH_SOURCE[0]}" 2>/dev/null || echo "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(dirname "$REAL_SCRIPT_PATH")"
 CWD="$(pwd)"
 
 # DEBUG: Show what we're detecting
 log_info "DEBUG: BASH_SOURCE[0]=${BASH_SOURCE[0]}"
+log_info "DEBUG: REAL_SCRIPT_PATH=$REAL_SCRIPT_PATH"
 log_info "DEBUG: SCRIPT_DIR=$SCRIPT_DIR"
 log_info "DEBUG: CWD=$CWD"
 
 # Find source directories - try multiple locations
 find_source_dir() {
     local name=$1
-    # 1. Script directory (where the script file actually is)
+    # 1. Real script directory (resolved symlinks)
     if [[ -d "$SCRIPT_DIR/$name" ]]; then
         echo "$SCRIPT_DIR/$name"
         return
@@ -174,7 +176,7 @@ find_source_dir() {
         echo "$CWD/$name"
         return
     fi
-    # 3. Parent of script dir (if script is in deploy-package/deploy-kali.sh)
+    # 3. Parent of script dir
     if [[ -d "$SCRIPT_DIR/../$name" ]]; then
         echo "$SCRIPT_DIR/../$name"
         return
