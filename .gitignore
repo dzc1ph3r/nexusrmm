@@ -44,6 +44,7 @@ Thumbs.db
 # Go
 vendor/
 go.work
+server/relay-server
 
 # Node
 node_modules/
