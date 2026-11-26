@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use ed25519_dalek::{VerifyingKey, Signature, Verifier};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tokio::time::interval;
 use tracing::{debug, info, warn, error};
 
@@ -22,7 +23,7 @@ pub struct UpdateConfig {
     pub current_version: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct UpdateManifest {
     version: String,
     release_notes: String,
@@ -31,7 +32,7 @@ struct UpdateManifest {
     signed_at: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct UpdateArtifact {
     os: String,
     arch: String,
@@ -56,9 +57,22 @@ impl UpdateManager {
     }
 
     pub fn set_public_key(&mut self, key_pem: &str) -> Result<()> {
-        // Parse Ed25519 public key from PEM
-        let key = VerifyingKey::from_pkcs8_der(key_pem.as_bytes())
-            .or_else(|_| VerifyingKey::from_pkcs8_der(&base64::decode(key_pem)?))?;
+        // Parse Ed25519 public key from PEM or base64
+        // Remove PEM headers/footers and decode base64
+        let key_data = key_pem
+            .lines()
+            .filter(|line| !line.starts_with("-----"))
+            .collect::<String>();
+        let key_bytes = base64::decode(key_data.trim())?;
+
+        // Ed25519 public key is 32 bytes
+        if key_bytes.len() != 32 {
+            return Err(anyhow::anyhow!("Invalid public key length: {}", key_bytes.len()));
+        }
+
+        let mut key_array = [0u8; 32];
+        key_array.copy_from_slice(&key_bytes);
+        let key = VerifyingKey::from_bytes(&key_array)?;
         self.public_key = Some(key);
         Ok(())
     }
@@ -118,7 +132,8 @@ impl UpdateManager {
         let bytes = response.bytes().await?;
 
         // Verify SHA256
-        let hash = sha256::digest(&bytes);
+        let hash = Sha256::digest(&bytes);
+        let hash = hex::encode(hash);
         if hash != artifact.sha256 {
             bail!("Checksum mismatch: expected {}, got {}", artifact.sha256, hash);
         }
@@ -217,7 +232,4 @@ impl Clone for UpdateManager {
     }
 }
 
-// Missing imports
-use sha2::{Sha256, Digest};
-use base64;
 use anyhow::bail;

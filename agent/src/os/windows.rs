@@ -486,12 +486,13 @@ impl OSInterface for WindowsOS {
 
     async fn spawn_pty(&self, _cols: u32, _rows: u32, _shell: Option<String>) -> Result<PtyHandle> {
         // Use ConPTY on Windows 10+
+        let (close_tx, _close_rx) = tokio::sync::oneshot::channel();
         Ok(PtyHandle {
             stdin_tx: tokio::sync::mpsc::channel(100).0,
             stdout_rx: tokio::sync::mpsc::channel(100).1,
             stderr_rx: tokio::sync::mpsc::channel(100).1,
             resize_tx: tokio::sync::mpsc::channel(10).0,
-            close_tx: tokio::sync::oneshot::channel().0,
+            close_tx: tokio::sync::Mutex::new(Some(close_tx)),
         })
     }
 

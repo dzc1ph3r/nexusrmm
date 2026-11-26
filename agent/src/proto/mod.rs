@@ -11,19 +11,18 @@ use prost::Message;
 
 pub trait FrameExt {
     fn encode_to_vec(&self) -> Vec<u8>;
-    fn decode<T: Message + Default>(data: &[u8]) -> anyhow::Result<T>;
 }
 
-impl FrameExt for dyn Message {
+impl<T: Message> FrameExt for T {
     fn encode_to_vec(&self) -> Vec<u8> {
         let mut buf = Vec::new();
         self.encode(&mut buf).unwrap();
         buf
     }
+}
 
-    fn decode<T: Message + Default>(data: &[u8]) -> anyhow::Result<T> {
-        T::decode(data).map_err(Into::into)
-    }
+pub fn decode_message<T: Message + Default>(data: &[u8]) -> anyhow::Result<T> {
+    T::decode(data).map_err(Into::into)
 }
 
 // Re-export commonly used types

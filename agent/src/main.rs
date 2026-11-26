@@ -23,8 +23,8 @@ use tracing_subscriber::{EnvFilter, fmt::format::FmtSpan};
 
 use crate::enroll::{EnrollmentManager, AgentIdentity};
 use crate::transport::{Transport, TransportConfig, SessionManager};
-use crate::telemetry::TelemetryCollector;
-use crate::update::UpdateManager;
+use crate::telemetry::{TelemetryCollector, TelemetryConfig as TelemetryConfigStruct};
+use crate::update::{UpdateManager, UpdateConfig as UpdateConfigStruct};
 
 #[derive(Parser, Debug)]
 #[command(name = "nexus-agent", version, about = "Nexus RMM Agent")]
@@ -55,8 +55,8 @@ struct AgentConfig {
     server: ServerConfig,
     agent: AgentSettings,
     enrollment: EnrollmentConfig,
-    telemetry: TelemetryConfig,
-    update: UpdateConfig,
+    telemetry: TelemetryConfigStruct,
+    update: UpdateConfigStruct,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -80,21 +80,6 @@ struct EnrollmentConfig {
     token: Option<String>,
     retry_interval_sec: u64,
     max_retries: u32,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct TelemetryConfig {
-    enabled: bool,
-    include_processes: bool,
-    include_network: bool,
-    include_disks: bool,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct UpdateConfig {
-    enabled: bool,
-    check_interval_sec: u64,
-    base_url: String,
 }
 
 #[tokio::main]
@@ -125,7 +110,7 @@ async fn main() -> Result<()> {
         agent_identity: identity.clone(),
     };
 
-    let mut transport = Transport::new(transport_config).await?;
+    let mut transport = Transport::new(transport_config)?;
 
     // Create enrollment manager
     let enrollment = EnrollmentManager::new(
@@ -151,7 +136,7 @@ async fn main() -> Result<()> {
             // Retry logic
             enrollment.retry_enroll().await?;
         }
-        identity.save(&config.agent.id_path)?;
+        identity.save(std::path::Path::new(&config.agent.id_path))?;
     }
 
     // Connect to server
@@ -208,7 +193,7 @@ fn load_config(path: &str, args: &Args) -> Result<AgentConfig> {
 
     // Override with command line args
     if let Some(token) = &args.enroll_token {
-        builder = builder.set_override("enrollment.token", token)?;
+        builder = builder.set_override("enrollment.token", token.as_str())?;
     }
 
     let config = builder.build()?;

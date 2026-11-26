@@ -340,7 +340,7 @@ impl OSInterface for MacOS {
             stdout_rx,
             stderr_rx,
             resize_tx,
-            close_tx,
+            close_tx: tokio::sync::Mutex::new(Some(close_tx)),
         })
     }
 

@@ -67,7 +67,7 @@ impl ClipboardManager {
 
                             if let Err(e) = self.tx.send(ClipboardEvent::ContentChanged(content)).await {
                                 debug!("Clipboard channel closed: {}", e);
-                                break;
+                                break Ok(());
                             }
                         }
                     }
@@ -79,7 +79,7 @@ impl ClipboardManager {
         }
     }
 
-    pub async fn set_content(&self, content: String) -> Result<()> {
+    pub async fn set_content(&mut self, content: String) -> Result<()> {
         if content.len() > self.config.max_size_bytes {
             return Err(anyhow::anyhow!("Clipboard content too large"));
         }

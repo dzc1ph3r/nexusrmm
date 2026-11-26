@@ -45,6 +45,7 @@ impl Default for CaptureConfig {
 
 pub struct CapturePipeline {
     config: CaptureConfig,
+    os: Option<Arc<dyn OSInterface>>,
     session: Option<CaptureSession>,
     frame_tx: Option<mpsc::Sender<EncodedFrame>>,
     last_frame: Option<Vec<u8>>,
@@ -68,6 +69,7 @@ impl CapturePipeline {
     pub fn new(config: CaptureConfig) -> Self {
         Self {
             config,
+            os: None,
             session: None,
             frame_tx: None,
             last_frame: None,
@@ -77,6 +79,7 @@ impl CapturePipeline {
     }
 
     pub async fn start(&mut self, os: Arc<dyn OSInterface>, frame_tx: mpsc::Sender<EncodedFrame>) -> Result<()> {
+        self.os = Some(os.clone());
         let session = os.start_capture().await?;
         self.session = Some(session);
         self.frame_tx = Some(frame_tx);
@@ -95,7 +98,7 @@ impl CapturePipeline {
             // The session will be dropped, closing the channel
         }
 
-        if let Some(os) = self.get_os() {
+        if let Some(os) = self.os.take() {
             os.stop_capture().await?;
         }
 
@@ -103,16 +106,12 @@ impl CapturePipeline {
         Ok(())
     }
 
-    fn get_os(&self) -> Option<Arc<dyn OSInterface>> {
-        None // Would be passed in or stored
-    }
-
     async fn run_capture_loop(&mut self) -> Result<()> {
-        let session = self.session.as_mut().unwrap();
-        let frame_tx = self.frame_tx.as_ref().unwrap();
+        let session = self.session.take().unwrap();
+        let frame_tx = self.frame_tx.as_ref().unwrap().clone();
         let frame_interval = Duration::from_millis(1000 / self.config.target_fps as u64);
 
-        let mut frame_rx = std::mem::take(&mut session.frame_rx);
+        let mut frame_rx = session.frame_rx;
 
         while let Some(raw_frame) = frame_rx.recv().await {
             let start = Instant::now();

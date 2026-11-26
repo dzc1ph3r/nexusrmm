@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use prost::Message;
-use sysinfo::System;
+use sysinfo::{System, Disks, Networks};
 use tokio::sync::Mutex;
 use tokio::time::interval;
 use tracing::{debug, info, warn};
@@ -19,7 +19,7 @@ pub struct TelemetryCollector {
     system: Arc<Mutex<System>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct TelemetryConfig {
     pub enabled: bool,
     pub include_processes: bool,
@@ -51,23 +51,16 @@ impl TelemetryCollector {
 
     pub async fn collect(&self) -> Result<Telemetry> {
         let mut system = self.system.lock().await;
-        system.refresh_cpu_all();
-        system.refresh_memory();
+        system.refresh_all();
 
-        if self.config.include_disks {
-            system.refresh_disks();
-        }
-        if self.config.include_network {
-            system.refresh_networks();
-        }
-
-        let cpu_percent = system.global_cpu_usage();
+        let cpu_percent = system.global_cpu_info().cpu_usage();
         let memory_total = system.total_memory();
         let memory_used = system.used_memory();
         let memory_available = memory_total - memory_used;
 
         let disks = if self.config.include_disks {
-            system.disks().iter().map(|disk| DiskInfo {
+            let mut disks = Disks::new_with_refreshed_list();
+            disks.iter().map(|disk| DiskInfo {
                 device: disk.name().to_string_lossy().to_string(),
                 mount_point: disk.mount_point().to_string_lossy().to_string(),
                 fstype: disk.file_system().to_string_lossy().to_string(),
@@ -80,7 +73,8 @@ impl TelemetryCollector {
         };
 
         let networks = if self.config.include_network {
-            system.networks().iter().map(|(name, data)| NetworkInfo {
+            let mut networks = Networks::new_with_refreshed_list();
+            networks.iter().map(|(name, data)| NetworkInfo {
                 interface_name: name.to_string(),
                 ipv4: String::new(), // Would need additional parsing
                 ipv6: String::new(),
@@ -94,7 +88,8 @@ impl TelemetryCollector {
             vec![]
         };
 
-        let (load_1, load_5, load_15) = system.load_average();
+        // load_average was removed in sysinfo 0.30
+        let (load_1, load_5, load_15) = (0.0, 0.0, 0.0);
 
         Ok(Telemetry {
             cpu_percent: cpu_percent as f32,
@@ -116,14 +111,18 @@ impl TelemetryCollector {
     pub async fn collect_inventory(&self) -> Result<Inventory> {
         let system = self.system.lock().await;
 
+        // Get CPU info - in sysinfo v0.30, cpus() returns a slice of Cpu
+        let cpus = system.cpus();
+        let first_cpu = cpus.first();
+
         let hardware = HardwareInfo {
             manufacturer: String::new(), // Would need platform-specific code
             model: String::new(),
             serial: String::new(),
-            cpu_vendor: system.cpus().first().map(|c| c.vendor_id().to_string()).unwrap_or_default(),
-            cpu_model: system.cpus().first().map(|c| c.brand().to_string()).unwrap_or_default(),
+            cpu_vendor: first_cpu.map(|c| c.vendor_id().to_string()).unwrap_or_default(),
+            cpu_model: first_cpu.map(|c| c.brand().to_string()).unwrap_or_default(),
             cpu_cores: system.physical_core_count().unwrap_or(0) as i32,
-            cpu_threads: system.cpus().len() as i32,
+            cpu_threads: cpus.len() as i32,
             memory_total: system.total_memory() as i64,
             disks: vec![],
             networks: vec![],

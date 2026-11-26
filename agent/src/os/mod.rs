@@ -20,8 +20,8 @@ use async_trait::async_trait;
 #[async_trait]
 pub trait OSInterface: Send + Sync {
     // Screen capture
-    async fn start_capture(&mut self) -> Result<CaptureSession>;
-    async fn stop_capture(&mut self) -> Result<()>;
+    async fn start_capture(&self) -> Result<CaptureSession>;
+    async fn stop_capture(&self) -> Result<()>;
 
     // Input injection
     async fn inject_mouse_move(&self, x: i32, y: i32) -> Result<()>;
@@ -70,6 +70,7 @@ pub struct VideoFrame {
     pub dirty_rects: Vec<Rect>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
     pub x: u32,
     pub y: u32,
@@ -155,7 +156,7 @@ pub struct PtyHandle {
     pub stdout_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
     pub stderr_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
     pub resize_tx: tokio::sync::mpsc::Sender<(u32, u32)>,
-    pub close_tx: tokio::sync::oneshot::Sender<()>,
+    pub close_tx: tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
 
 // Factory function

@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -19,40 +20,41 @@ use crate::os::{
 
 pub struct LinuxOS {
     // PipeWire/X11 capture state
-    capture_active: bool,
+    capture_active: Arc<AtomicBool>,
 }
 
 impl LinuxOS {
     pub fn new() -> Self {
         Self {
-            capture_active: false,
+            capture_active: Arc::new(AtomicBool::new(false)),
         }
     }
 }
 
 #[async_trait]
 impl OSInterface for LinuxOS {
-    async fn start_capture(&mut self) -> Result<CaptureSession> {
+    async fn start_capture(&self) -> Result<CaptureSession> {
         // Use PipeWire for screen capture on modern Linux (Wayland/X11)
         // This is a simplified implementation - production would use:
         // - PipeWire via libpipewire for Wayland
         // - X11 XDamage/XShm for X11
         // - DRM/KMS for direct KMS capture
 
-        self.capture_active = true;
+        self.capture_active.store(true, Ordering::Relaxed);
         let (tx, rx) = mpsc::channel(10);
 
         // Get screen dimensions
         let (width, height) = get_screen_size().await?;
 
         // Spawn capture loop using PipeWire
+        let capture_active = self.capture_active.clone();
         tokio::spawn(async move {
             // In production, use:
             // - pipewire crate for Rust bindings
             // - Or shell out to `wf-recorder` / `grim` / `pipewire` CLI
             // For now, simulate frame capture
             loop {
-                if !std::sync::atomic::AtomicBool::new(false).load(std::sync::atomic::Ordering::Relaxed) {
+                if !capture_active.load(Ordering::Relaxed) {
                     break;
                 }
 
@@ -80,8 +82,8 @@ impl OSInterface for LinuxOS {
         })
     }
 
-    async fn stop_capture(&mut self) -> Result<()> {
-        self.capture_active = false;
+    async fn stop_capture(&self) -> Result<()> {
+        self.capture_active.store(false, Ordering::Relaxed);
         Ok(())
     }
 
@@ -195,21 +197,24 @@ impl OSInterface for LinuxOS {
 
         if result.is_err() || !result.unwrap().success() {
             // Fallback to X11
-            Command::new("xclip")
+            let mut child = Command::new("xclip")
                 .args(["-i", "-selection", "clipboard"])
                 .stdin(std::process::Stdio::piped())
-                .spawn()?
-                .stdin
-                .as_mut()
-                .unwrap()
-                .write_all(text.as_bytes())
-                .await?;
+                .spawn()?;
+
+            if let Some(stdin) = child.stdin.as_mut() {
+                use tokio::io::AsyncWriteExt;
+                stdin.write_all(text.as_bytes()).await?;
+            }
+            child.wait().await?;
         }
 
         Ok(())
     }
 
     async fn list_files(&self, path: &str) -> Result<Vec<FileEntry>> {
+        use std::os::unix::fs::PermissionsExt;
+
         let mut entries = Vec::new();
         let mut dir = tokio::fs::read_dir(path).await?;
 
@@ -364,13 +369,13 @@ impl OSInterface for LinuxOS {
             .stderr(std::process::Stdio::piped())
             .spawn()?;
 
-        let stdin = child.stdin.take().unwrap();
+        let mut stdin = child.stdin.take().unwrap();
         let stdout = child.stdout.take().unwrap();
         let stderr = child.stderr.take().unwrap();
 
-        let (stdin_tx, mut stdin_rx) = mpsc::channel(100);
-        let (stdout_tx, stdout_rx) = mpsc::channel(100);
-        let (stderr_tx, stderr_rx) = mpsc::channel(100);
+        let (stdin_tx, mut stdin_rx) = mpsc::channel::<Vec<u8>>(100);
+        let (stdout_tx, stdout_rx) = mpsc::channel::<Vec<u8>>(100);
+        let (stderr_tx, stderr_rx) = mpsc::channel::<Vec<u8>>(100);
         let (resize_tx, _resize_rx) = mpsc::channel(10);
         let (close_tx, close_rx) = tokio::sync::oneshot::channel();
 
@@ -421,6 +426,7 @@ impl OSInterface for LinuxOS {
         // Close handler
         tokio::spawn(async move {
             close_rx.await.ok();
+            let mut child = child;
             let _ = child.kill().await;
         });
 
@@ -429,7 +435,7 @@ impl OSInterface for LinuxOS {
             stdout_rx,
             stderr_rx,
             resize_tx,
-            close_tx,
+            close_tx: tokio::sync::Mutex::new(Some(close_tx)),
         })
     }
 

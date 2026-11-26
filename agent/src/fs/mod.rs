@@ -10,6 +10,7 @@ use blake3;
 use sha2::{Sha256, Sha512, Digest};
 use tokio::fs;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, AsyncSeekExt};
+use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
 use crate::os::{OSInterface, FileEntry};
@@ -41,7 +42,7 @@ impl Default for FsConfig {
 pub struct FileManager {
     config: FsConfig,
     os: Arc<dyn OSInterface>,
-    active_transfers: HashMap<String, FileTransfer>,
+    active_transfers: Mutex<HashMap<String, FileTransfer>>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,7 +61,7 @@ impl FileManager {
         Self {
             config,
             os,
-            active_transfers: HashMap::new(),
+            active_transfers: Mutex::new(HashMap::new()),
         }
     }
 
@@ -148,7 +149,7 @@ impl FileManager {
         }
     }
 
-    pub fn start_transfer(&mut self, transfer_id: String, path: PathBuf, total_size: u64, is_upload: bool) -> Result<FileTransfer> {
+    pub async fn start_transfer(&self, transfer_id: String, path: PathBuf, total_size: u64, is_upload: bool) -> Result<FileTransfer> {
         let transfer = FileTransfer {
             transfer_id: transfer_id.clone(),
             path,
@@ -159,12 +160,13 @@ impl FileManager {
             started_at: std::time::Instant::now(),
         };
 
-        self.active_transfers.insert(transfer_id, transfer.clone());
+        self.active_transfers.lock().await.insert(transfer_id, transfer.clone());
         Ok(transfer)
     }
 
-    pub fn update_transfer(&mut self, transfer_id: &str, chunk: &[u8]) -> Result<u64> {
-        let transfer = self.active_transfers.get_mut(transfer_id)
+    pub async fn update_transfer(&self, transfer_id: &str, chunk: &[u8]) -> Result<u64> {
+        let mut transfers = self.active_transfers.lock().await;
+        let transfer = transfers.get_mut(transfer_id)
             .ok_or_else(|| anyhow::anyhow!("Transfer not found"))?;
 
         transfer.sha256.update(chunk);
@@ -173,15 +175,17 @@ impl FileManager {
         Ok(transfer.transferred)
     }
 
-    pub fn finish_transfer(&mut self, transfer_id: &str) -> Result<FileTransfer> {
-        let transfer = self.active_transfers.remove(transfer_id)
+    pub async fn finish_transfer(&self, transfer_id: &str) -> Result<FileTransfer> {
+        let mut transfers = self.active_transfers.lock().await;
+        let transfer = transfers.remove(transfer_id)
             .ok_or_else(|| anyhow::anyhow!("Transfer not found"))?;
 
         Ok(transfer)
     }
 
-    pub fn get_transfer(&self, transfer_id: &str) -> Option<&FileTransfer> {
-        self.active_transfers.get(transfer_id)
+    pub async fn get_transfer(&self, transfer_id: &str) -> Option<FileTransfer> {
+        let transfers = self.active_transfers.lock().await;
+        transfers.get(transfer_id).cloned()
     }
 }
 
@@ -206,7 +210,7 @@ impl ChunkedTransfer {
     }
 
     pub async fn upload(&self, mut reader: impl AsyncReadExt + Unpin, total_size: u64) -> Result<Vec<u8>> {
-        self.manager.start_transfer(self.transfer_id.clone(), self.path.clone(), total_size, true)?;
+        self.manager.start_transfer(self.transfer_id.clone(), self.path.clone(), total_size, true).await?;
 
         let mut buffer = vec![0u8; self.chunk_size];
         let mut uploaded = 0u64;
@@ -216,7 +220,7 @@ impl ChunkedTransfer {
             if n == 0 { break; }
 
             let chunk = &buffer[..n];
-            self.manager.update_transfer(&self.transfer_id, chunk)?;
+            self.manager.update_transfer(&self.transfer_id, chunk).await?;
 
             // Write chunk to disk
             self.manager.write_file_chunk(
@@ -228,7 +232,7 @@ impl ChunkedTransfer {
             uploaded += n as u64;
         }
 
-        let transfer = self.manager.finish_transfer(&self.transfer_id)?;
+        let transfer = self.manager.finish_transfer(&self.transfer_id).await?;
         let hash = transfer.sha256.clone().finalize().to_vec();
 
         Ok(hash)

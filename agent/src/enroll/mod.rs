@@ -41,8 +41,10 @@ pub struct AgentConfig {
 
 impl AgentIdentity {
     pub fn new() -> Result<Self> {
-        let mut csprng = OsRng;
-        let signing_key = SigningKey::generate(&mut csprng);
+        // Generate random 32 bytes for the signing key
+        let mut key_bytes = [0u8; 32];
+        rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut key_bytes);
+        let signing_key = SigningKey::from_bytes(&key_bytes);
         let verifying_key = signing_key.verifying_key();
 
         Ok(Self {
@@ -93,7 +95,7 @@ impl AgentIdentity {
     pub fn verifying_key(&self) -> Result<VerifyingKey> {
         let bytes: [u8; 32] = self.verifying_key.as_slice().try_into()
             .context("Invalid verifying key length")?;
-        Ok(VerifyingKey::from_bytes(&bytes))
+        Ok(VerifyingKey::from_bytes(&bytes)?)
     }
 
     pub fn sign(&self, message: &[u8]) -> Result<Vec<u8>> {
@@ -186,7 +188,7 @@ impl EnrollmentManager {
         let frame = Frame::new(FrameType::EnrollRequest, 0, &request)?;
         let response_frame = self.transport.send_request(frame).await?;
 
-        match response_frame.frame_type {
+        match response_frame.header.msg_type {
             FrameType::EnrollChallenge => {
                 let challenge: EnrollChallenge = response_frame.decode_payload()?;
                 Ok(challenge)
@@ -195,7 +197,7 @@ impl EnrollmentManager {
                 let err = response_frame.decode_payload::<crate::proto::rmm::v1::Error>()?;
                 bail!("Enrollment request failed: {}", err.message)
             }
-            _ => bail!("Unexpected response type: {:?}", response_frame.frame_type),
+            _ => bail!("Unexpected response type: {:?}", response_frame.header.msg_type),
         }
     }
 
@@ -228,7 +230,7 @@ impl EnrollmentManager {
         let frame = Frame::new(FrameType::EnrollResponse, 0, &response)?;
         let response_frame = self.transport.send_request(frame).await?;
 
-        match response_frame.frame_type {
+        match response_frame.header.msg_type {
             FrameType::EnrollResult => {
                 let result: EnrollResult = response_frame.decode_payload()?;
                 Ok(result)
@@ -237,7 +239,7 @@ impl EnrollmentManager {
                 let err = response_frame.decode_payload::<crate::proto::rmm::v1::Error>()?;
                 bail!("Enrollment response failed: {}", err.message)
             }
-            _ => bail!("Unexpected response type: {:?}", response_frame.frame_type),
+            _ => bail!("Unexpected response type: {:?}", response_frame.header.msg_type),
         }
     }
 
@@ -253,7 +255,8 @@ impl EnrollmentManager {
         identity.ca_cert_der = Some(result.ca_cert_der);
         identity.cert_expires_at = Some(result.cert_expires_at as u64);
 
-        if let Some(config_map) = result.config {
+        if !result.config.is_empty() {
+            let config_map = result.config;
             identity.server_config = Some(AgentConfig {
                 heartbeat_interval_sec: config_map.get("heartbeat_interval_sec")
                     .and_then(|v| v.parse().ok())
@@ -291,7 +294,7 @@ impl EnrollmentManager {
             ed25519_pubkey: identity.verifying_key.clone(),
             session_pubkey: session_pubkey.to_vec(),
             signature: vec![], // Will be filled below
-            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs(),
+            timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)?.as_secs() as i64,
         };
 
         // Sign hello payload
@@ -315,7 +318,7 @@ impl EnrollmentManager {
         let frame = Frame::new(FrameType::Hello, 0, &hello)?;
         let response_frame = self.transport.send_request(frame).await?;
 
-        match response_frame.frame_type {
+        match response_frame.header.msg_type {
             FrameType::Welcome => {
                 let welcome: Welcome = response_frame.decode_payload()?;
                 Ok(welcome)
@@ -324,7 +327,7 @@ impl EnrollmentManager {
                 let err = response_frame.decode_payload::<crate::proto::rmm::v1::Error>()?;
                 bail!("Hello failed: {}", err.message)
             }
-            _ => bail!("Unexpected response type: {:?}", response_frame.frame_type),
+            _ => bail!("Unexpected response type: {:?}", response_frame.header.msg_type),
         }
     }
 }

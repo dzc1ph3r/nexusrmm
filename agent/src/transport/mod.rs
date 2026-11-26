@@ -7,15 +7,17 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, bail};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use futures_util::{SinkExt, StreamExt};
+use prost::Message;
 use rand::rngs::OsRng;
 use tokio::sync::{mpsc, Mutex, RwLock};
 use tokio::time::{interval, timeout};
-use tokio_tungstenite::{connect_async, tungstenite::protocol::Message};
+use tokio_tungstenite::{connect_async, tungstenite::protocol::Message as WsMessage};
 use tracing::{debug, info, warn, error};
 use x25519_dalek::{PublicKey as X25519PublicKey, StaticSecret};
 
 use crate::proto::rmm::v1::{
     Heartbeat, HeartbeatAck, Disconnect, Error,
+    disconnect::Reason as DisconnectReason,
     VideoConfig, VideoFrame, CursorUpdate, DisplayInfo,
     PtyData, PtyResize, FileListRequest, FileListResponse, FileReadRequest, FileReadResponse,
     FileWriteRequest, FileWriteResponse, FileHashRequest, FileHashResponse,
@@ -265,13 +267,13 @@ pub struct TransportConfig {
 
 pub struct Transport {
     config: TransportConfig,
-    ws_sender: Arc<Mutex<Option<mpsc::UnboundedSender<Message>>>>,
+    ws_sender: Arc<Mutex<Option<mpsc::UnboundedSender<WsMessage>>>>,
     session_id: Arc<RwLock<Option<u64>>>,
     seq_num: Arc<Mutex<u32>>,
     pending_requests: Arc<RwLock<HashMap<u32, mpsc::UnboundedSender<Frame>>>>,
     session_key: Arc<RwLock<Option<[u8; 32]>>>,
     connected: Arc<RwLock<bool>>,
-    heartbeat_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    heartbeat_handle: Arc<Mutex<Option<Arc<tokio::task::JoinHandle<()>>>>>,
 }
 
 impl Transport {
@@ -301,7 +303,7 @@ impl Transport {
         info!("WebSocket connected");
 
         let (ws_sender, mut ws_receiver) = ws_stream.split();
-        let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+        let (tx, mut rx) = mpsc::unbounded_channel::<WsMessage>();
 
         // Store sender
         *self.ws_sender.lock().await = Some(tx.clone());
@@ -310,7 +312,7 @@ impl Transport {
         let ws_sender_clone = tx.clone();
         tokio::spawn(async move {
             while let Some(msg) = rx.recv().await {
-                if ws_sender_clone.send(msg).await.is_err() {
+                if ws_sender_clone.send(msg).is_err() {
                     break;
                 }
             }
@@ -321,16 +323,16 @@ impl Transport {
         tokio::spawn(async move {
             while let Some(msg) = ws_receiver.next().await {
                 match msg {
-                    Ok(Message::Binary(data)) => {
-                        if let Err(e) = transport.handle_binary_frame(data).await {
+                    Ok(WsMessage::Binary(data)) => {
+                        if let Err(e) = transport.handle_binary_frame(data.into()).await {
                             error!("Frame handling error: {}", e);
                         }
                     }
-                    Ok(Message::Close(_)) => {
+                    Ok(WsMessage::Close(_)) => {
                         info!("WebSocket closed by server");
                         break;
                     }
-                    Ok(Message::Ping(data)) => {
+                    Ok(WsMessage::Ping(data)) => {
                         // Auto-pong handled by tungstenite
                     }
                     Err(e) => {
@@ -350,6 +352,7 @@ impl Transport {
 
     fn build_tls_config(&self) -> Result<rustls::ClientConfig> {
         use rustls::{ClientConfig, RootCertStore};
+        use rustls::pki_types::CertificateDer;
         use std::fs::File;
         use std::io::BufReader;
 
@@ -358,9 +361,12 @@ impl Transport {
         if let Some(ca_path) = &self.config.ca_cert_path {
             let cert_file = File::open(ca_path)?;
             let mut reader = BufReader::new(cert_file);
-            root_store.add_parsable_certificates(&rustls_pemfile::certs(&mut reader)?)?;
+            let certs = rustls_pemfile::certs(&mut reader)?;
+            let cert_der: Vec<CertificateDer<'_>> = certs.iter().map(|c| CertificateDer::from(c.as_slice())).collect();
+            root_store.add_parsable_certificates(cert_der);
         } else if let Some(ca_der) = &self.config.agent_identity.ca_cert_der {
-            root_store.add_parsable_certificates(&[ca_der.clone()])?;
+            let cert_der = CertificateDer::from(ca_der.as_slice());
+            root_store.add_parsable_certificates([cert_der]);
         }
 
         let config = ClientConfig::builder()
@@ -464,7 +470,7 @@ impl Transport {
         let sender = self.ws_sender.lock().await;
         if let Some(tx) = sender.as_ref() {
             let data = frame.encode();
-            tx.send(Message::Binary(data))?;
+            tx.send(WsMessage::Binary(data.to_vec()))?;
             Ok(())
         } else {
             bail!("Not connected")
@@ -477,14 +483,14 @@ impl Transport {
         self.send_frame(frame).await
     }
 
-    pub async fn start_heartbeat_loop(&self) -> Result<tokio::task::JoinHandle<()>> {
+    pub async fn start_heartbeat_loop(&self) -> Result<Arc<tokio::task::JoinHandle<()>>> {
         let transport = self.clone();
-        let interval = self.config.heartbeat_interval;
+        let hb_interval = self.config.heartbeat_interval;
         let max_missed = self.config.max_missed_heartbeats;
 
         let handle = tokio::spawn(async move {
             let mut missed = 0;
-            let mut ticker = interval(interval);
+            let mut ticker = tokio::time::interval(hb_interval);
 
             loop {
                 ticker.tick().await;
@@ -528,8 +534,9 @@ impl Transport {
             }
         });
 
-        *self.heartbeat_handle.lock().await = Some(handle);
-        Ok(tokio::task::JoinHandle::new(async {})) // Return dummy handle
+        let handle_arc = Arc::new(handle);
+        *self.heartbeat_handle.lock().await = Some(handle_arc.clone());
+        Ok(handle_arc)
     }
 
     pub async fn disconnect(&self) -> Result<()> {
@@ -538,7 +545,7 @@ impl Transport {
             FrameType::Disconnect,
             session_id.unwrap_or(0),
             Disconnect {
-                reason: Disconnect::Reason::ReasonNormal as i32,
+                reason: DisconnectReason::Normal as i32,
                 message: "Client disconnect".to_string(),
             }.encode_to_vec(),
         )?;
@@ -554,7 +561,7 @@ impl Transport {
 
         // Close WebSocket
         if let Some(tx) = self.ws_sender.lock().await.take() {
-            tx.send(Message::Close(None)).ok();
+            tx.send(WsMessage::Close(None)).ok();
         }
 
         info!("Disconnected from server");

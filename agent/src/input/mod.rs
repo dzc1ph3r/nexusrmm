@@ -60,12 +60,12 @@ impl InputManager {
     }
 
     pub fn push_event(&mut self, event: InputEvent) {
-        self.event_queue.push_back(event);
-
-        // Update mouse position for move events
+        // Update mouse position for move events before moving
         if let InputEvent::MouseMove { x, y } = &event {
             self.mouse_position = (*x, *y);
         }
+
+        self.event_queue.push_back(event);
 
         // Flush if batch is full or interval elapsed
         if self.event_queue.len() >= self.config.max_batch_size

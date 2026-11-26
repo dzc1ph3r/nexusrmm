@@ -143,19 +143,19 @@ impl ScriptEngine {
         let script_id_clone = script_id.clone();
         let stdout_tx_clone = stdout_tx.clone();
         tokio::spawn(async move {
-            Self::read_output(stdout, stdout_tx_clone, ScriptStream::STDOUT, script_id_clone).await;
+            Self::read_output(stdout, stdout_tx_clone, ScriptStream::ScriptStdout, script_id_clone).await;
         });
 
         let script_id_clone = script_id.clone();
         let stderr_tx_clone = stderr_tx.clone();
         tokio::spawn(async move {
-            Self::read_output(stderr, stderr_tx_clone, ScriptStream::STDERR, script_id_clone).await;
+            Self::read_output(stderr, stderr_tx_clone, ScriptStream::ScriptStderr, script_id_clone).await;
         });
 
         // Wait for completion with timeout
         let result = timeout(Duration::from_secs(timeout_sec), async {
             self.running_scripts.insert(script_id.clone(), running);
-            let child = self.running_scripts.remove(&script_id).unwrap().child;
+            let mut child = self.running_scripts.remove(&script_id).unwrap().child;
             child.wait().await
         }).await;
 
@@ -167,7 +167,7 @@ impl ScriptEngine {
                 // Send final result
                 let _ = stdout_tx.send(ScriptOutput {
                     session_id: String::new(),
-                    stream: ScriptStream::STDOUT as i32,
+                    stream: ScriptStream::ScriptStdout as i32,
                     data: format!("\n[Exit code: {}]\n", exit_code).into_bytes(),
                 }).await;
 
@@ -242,17 +242,17 @@ impl ScriptEngine {
 
     fn prepare_command(&self, language: ScriptLanguage, script: &str) -> Result<(String, Vec<String>)> {
         match language {
-            ScriptLanguage::BASH => Ok(("/bin/bash".to_string(), vec!["-c".to_string(), script.to_string()])),
-            ScriptLanguage::SH => Ok(("/bin/sh".to_string(), vec!["-c".to_string(), script.to_string()])),
-            ScriptLanguage::POWERSHELL => {
+            ScriptLanguage::ScriptBash => Ok(("/bin/bash".to_string(), vec!["-c".to_string(), script.to_string()])),
+            ScriptLanguage::ScriptSh => Ok(("/bin/sh".to_string(), vec!["-c".to_string(), script.to_string()])),
+            ScriptLanguage::ScriptPowershell => {
                 if cfg!(target_os = "windows") {
                     Ok(("powershell.exe".to_string(), vec!["-Command".to_string(), script.to_string()]))
                 } else {
                     Ok(("pwsh".to_string(), vec!["-Command".to_string(), script.to_string()]))
                 }
             }
-            ScriptLanguage::PYTHON => Ok(("python3".to_string(), vec!["-c".to_string(), script.to_string()])),
-            ScriptLanguage::CMD => {
+            ScriptLanguage::ScriptPython => Ok(("python3".to_string(), vec!["-c".to_string(), script.to_string()])),
+            ScriptLanguage::ScriptCmd => {
                 if cfg!(target_os = "windows") {
                     Ok(("cmd.exe".to_string(), vec!["/C".to_string(), script.to_string()]))
                 } else {
@@ -276,15 +276,16 @@ impl ScriptEngine {
 }
 
 // Interactive PTY session for terminal emulation
+#[derive(Clone)]
 pub struct PtySession {
-    handle: PtyHandle,
+    handle: Arc<PtyHandle>,
     cols: u32,
     rows: u32,
 }
 
 impl PtySession {
     pub fn new(handle: PtyHandle, cols: u32, rows: u32) -> Self {
-        Self { handle, cols, rows }
+        Self { handle: Arc::new(handle), cols, rows }
     }
 
     pub async fn write_stdin(&self, data: &[u8]) -> Result<()> {
@@ -298,7 +299,10 @@ impl PtySession {
     }
 
     pub async fn close(&self) -> Result<()> {
-        self.handle.close_tx.send(()).ok();
+        // close_tx is Option<oneshot::Sender<()>> - we need to take it
+        if let Some(tx) = self.handle.close_tx.lock().await.take() {
+            let _ = tx.send(());
+        }
         Ok(())
     }
 
@@ -316,7 +320,7 @@ impl PtySession {
 // PTY manager for creating and managing terminal sessions
 pub struct PtyManager {
     os: Arc<dyn OSInterface>,
-    sessions: HashMap<String, PtySession>,
+    sessions: HashMap<String, Arc<PtySession>>,
 }
 
 impl PtyManager {
@@ -327,19 +331,15 @@ impl PtyManager {
         }
     }
 
-    pub async fn create_session(&mut self, session_id: String, cols: u32, rows: u32, shell: Option<String>) -> Result<PtySession> {
+    pub async fn create_session(&mut self, session_id: String, cols: u32, rows: u32, shell: Option<String>) -> Result<Arc<PtySession>> {
         let handle = self.os.spawn_pty(cols, rows, shell).await?;
-        let session = PtySession::new(handle, cols, rows);
+        let session = Arc::new(PtySession::new(handle, cols, rows));
         self.sessions.insert(session_id, session.clone());
         Ok(session)
     }
 
-    pub fn get_session(&self, session_id: &str) -> Option<&PtySession> {
-        self.sessions.get(session_id)
-    }
-
-    pub fn get_session_mut(&mut self, session_id: &str) -> Option<&mut PtySession> {
-        self.sessions.get_mut(session_id)
+    pub fn get_session(&self, session_id: &str) -> Option<Arc<PtySession>> {
+        self.sessions.get(session_id).cloned()
     }
 
     pub async fn close_session(&mut self, session_id: &str) -> Result<()> {
